@@ -1,5 +1,0 @@
-{
-  "rewrites": [
-    { "source": "/api/player_api.php", "destination": "/api/player_api" }
-  ]
-}
