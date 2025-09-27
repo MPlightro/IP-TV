@@ -1,24 +1,20 @@
 // api/player_api.js
-// Xtream Codes–compatible Player API for IPTV Smarters
-
 const https = require("https");
 
 // Helper: fetch JSON from Google Drive API
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
-    https
-      .get(url, (res) => {
-        let body = "";
-        res.on("data", (c) => (body += c));
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(body));
-          } catch (e) {
-            reject(e);
-          }
-        });
-      })
-      .on("error", reject);
+    https.get(url, (res) => {
+      let body = "";
+      res.on("data", (c) => (body += c));
+      res.on("end", () => {
+        try {
+          resolve(JSON.parse(body));
+        } catch (e) {
+          reject(e);
+        }
+      });
+    }).on("error", reject);
   });
 }
 
@@ -33,12 +29,39 @@ function parseUsers() {
   return map;
 }
 
-module.exports = async (req, res) => {
-  const users = parseUsers();
-  const { username, password } = req.query;
+// Helper: get username/password from GET or POST
+async function getCredentials(req) {
+  let username = req.query.username;
+  let password = req.query.password;
 
-  // Validate login
+  if ((!username || !password) && req.method === "POST") {
+    try {
+      const body = await new Promise((resolve, reject) => {
+        let data = "";
+        req.on("data", chunk => data += chunk);
+        req.on("end", () => resolve(data));
+        req.on("error", reject);
+      });
+
+      const params = new URLSearchParams(body);
+      username = params.get("username");
+      password = params.get("password");
+    } catch (err) {
+      console.error("Error parsing POST body:", err);
+    }
+  }
+
+  return { username, password };
+}
+
+module.exports = async (req, res) => {
+  const { username, password } = await getCredentials(req);
+  console.log("Received credentials:", { username, password }); // Log in Vercel
+
+  const users = parseUsers();
+
   if (!username || !password || users[username] !== password) {
+    console.log("Authentication failed");
     return res.json({
       user_info: { auth: 0, status: "Invalid", message: "Invalid username/password" },
       server_info: {}
@@ -58,7 +81,6 @@ module.exports = async (req, res) => {
     const data = await fetchJson(url);
     const files = data.files || [];
 
-    // Build movie_stream array
     const movie_stream = files.map((f, i) => ({
       num: i + 1,
       name: f.name,
@@ -71,7 +93,6 @@ module.exports = async (req, res) => {
       direct_source: `https://drive.google.com/uc?id=${f.id}&export=download`
     }));
 
-    // Full Xtream Codes JSON
     const response = {
       user_info: { username, password, auth: 1, status: "Active", message: "Welcome" },
       server_info: {
