@@ -7,11 +7,8 @@ function fetchJson(url) {
       let body = "";
       res.on("data", chunk => body += chunk.toString());
       res.on("end", () => {
-        try {
-          resolve(JSON.parse(body));
-        } catch (e) {
-          reject(e);
-        }
+        try { resolve(JSON.parse(body)); } 
+        catch (e) { reject(e); }
       });
     }).on("error", reject);
   });
@@ -45,15 +42,9 @@ async function getCredentials(req) {
 }
 
 module.exports = async (req, res) => {
-  // Log everything for debugging
-  console.log("Method:", req.method);
-  console.log("URL:", req.url);
-  console.log("Query:", req.query);
-
   const { username, password } = await getCredentials(req);
-  console.log("Received credentials:", { username, password });
-
   const USERS = parseUsers();
+
   if (!username || !password || USERS[username] !== password) {
     return res.json({
       user_info: { auth: 0, status: "Invalid", message: "Invalid username/password" },
@@ -61,13 +52,9 @@ module.exports = async (req, res) => {
     });
   }
 
-  // Google Drive config
   const API_KEY = process.env.GOOGLE_API_KEY;
   const FOLDER_ID = process.env.FOLDER_ID;
-
-  if (!API_KEY || !FOLDER_ID) {
-    return res.status(500).json({ error: "Server not configured" });
-  }
+  if (!API_KEY || !FOLDER_ID) return res.status(500).json({ error: "Server not configured" });
 
   try {
     // Fetch all files from the Drive folder
@@ -75,8 +62,8 @@ module.exports = async (req, res) => {
     const data = await fetchJson(url);
     const files = data.files || [];
 
-    const movie_stream = files.map((f, i) => ({
-      num: i + 1,
+    // Build Smarters-compatible movies array
+    const movies = files.map((f, i) => ({
       name: f.name,
       stream_type: "movie",
       stream_id: f.id,
@@ -84,26 +71,22 @@ module.exports = async (req, res) => {
       added: Date.now().toString(),
       category_id: 1,
       container_extension: "mp4",
+      // Google Drive direct download link (works if file is public)
       direct_source: `https://drive.google.com/uc?id=${f.id}&export=download`
     }));
 
-    const response = {
+    res.json({
       user_info: { username, password, auth: 1, status: "Active", message: "Welcome" },
       server_info: {
-        url: "ip-tv-psi.vercel.app",
+        url: req.headers.host,
         port: 80,
         https_port: 443,
         server_protocol: "https",
         timezone: "UTC"
       },
-      categories: [
-        { category_id: 1, category_name: "Movies", parent_id: 0 }
-      ],
-      movies: movie_stream
-    };
-
-    res.setHeader("Content-Type", "application/json");
-    res.json(response);
+      categories: [{ category_id: 1, category_name: "Movies", parent_id: 0 }],
+      movies
+    });
 
   } catch (err) {
     console.error("Error fetching Drive files:", err);
