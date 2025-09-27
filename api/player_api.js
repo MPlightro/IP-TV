@@ -3,19 +3,22 @@
 
 const https = require("https");
 
+// Helper: fetch JSON from Google Drive API
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
-      let body = "";
-      res.on("data", (c) => (body += c));
-      res.on("end", () => {
-        try {
-          resolve(JSON.parse(body));
-        } catch (e) {
-          reject(e);
-        }
-      });
-    }).on("error", reject);
+    https
+      .get(url, (res) => {
+        let body = "";
+        res.on("data", (c) => (body += c));
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch (e) {
+            reject(e);
+          }
+        });
+      })
+      .on("error", reject);
   });
 }
 
@@ -34,6 +37,7 @@ module.exports = async (req, res) => {
   const users = parseUsers();
   const { username, password } = req.query;
 
+  // Validate login
   if (!username || !password || users[username] !== password) {
     return res.json({
       user_info: { auth: 0, status: "Invalid", message: "Invalid username/password" },
@@ -49,7 +53,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // Fetch Google Drive folder files
+    // Fetch files from Google Drive folder
     const url = `https://www.googleapis.com/drive/v3/files?q='${FOLDER_ID}'+in+parents&key=${API_KEY}&fields=files(id,name)`;
     const data = await fetchJson(url);
     const files = data.files || [];
@@ -67,7 +71,7 @@ module.exports = async (req, res) => {
       direct_source: `https://drive.google.com/uc?id=${f.id}&export=download`
     }));
 
-    // Return full Xtream Codes–compatible JSON
+    // Full Xtream Codes JSON
     const response = {
       user_info: { username, password, auth: 1, status: "Active", message: "Welcome" },
       server_info: {
