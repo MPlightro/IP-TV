@@ -1,3 +1,6 @@
+// api/player_api.js
+// Xtream Codes–compatible Player API for IPTV Smarters
+
 const https = require("https");
 
 function fetchJson(url) {
@@ -16,6 +19,7 @@ function fetchJson(url) {
   });
 }
 
+// Parse USERS env var: "alice:hunter2,bob:letmein"
 function parseUsers() {
   const raw = process.env.USERS || "";
   const map = {};
@@ -28,60 +32,62 @@ function parseUsers() {
 
 module.exports = async (req, res) => {
   const users = parseUsers();
-  const { username, password, action } = req.query;
+  const { username, password } = req.query;
 
   if (!username || !password || users[username] !== password) {
-    return res.json({ user_info: { auth: 0, status: "Invalid" }, server_info: {} });
+    return res.json({
+      user_info: { auth: 0, status: "Invalid", message: "Invalid username/password" },
+      server_info: {}
+    });
   }
 
   const API_KEY = process.env.GOOGLE_API_KEY;
   const FOLDER_ID = process.env.FOLDER_ID;
 
-  // --- Case 1: No action, just user + server info ---
-  if (!action) {
-    return res.json({
-      user_info: {
-        username,
-        password,
-        status: "Active",
-        auth: 1
-      },
+  if (!API_KEY || !FOLDER_ID) {
+    return res.status(500).json({ error: "Server not configured" });
+  }
+
+  try {
+    // Fetch Google Drive folder files
+    const url = `https://www.googleapis.com/drive/v3/files?q='${FOLDER_ID}'+in+parents&key=${API_KEY}&fields=files(id,name)`;
+    const data = await fetchJson(url);
+    const files = data.files || [];
+
+    // Build movie_stream array
+    const movie_stream = files.map((f, i) => ({
+      num: i + 1,
+      name: f.name,
+      stream_type: "movie",
+      stream_id: f.id,
+      stream_icon: "",
+      added: Date.now().toString(),
+      category_id: 1,
+      container_extension: "mp4",
+      direct_source: `https://drive.google.com/uc?id=${f.id}&export=download`
+    }));
+
+    // Return full Xtream Codes–compatible JSON
+    const response = {
+      user_info: { username, password, auth: 1, status: "Active", message: "Welcome" },
       server_info: {
         url: "ip-tv-psi.vercel.app",
-        port: "80",
-        https_port: "443",
+        port: 80,
+        https_port: 443,
         server_protocol: "https",
         timezone: "UTC"
-      }
-    });
+      },
+      categories: [
+        { category_id: 1, category_name: "Movies", parent_id: 0 }
+      ],
+      movie_stream
+    };
+
+    res.setHeader("Content-Type", "application/json");
+    res.json(response);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error generating playlist" });
   }
-
-  // --- Case 2: Get VOD streams ---
-  if (action === "get_vod_streams") {
-    try {
-      const url = `https://www.googleapis.com/drive/v3/files?q='${FOLDER_ID}'+in+parents&key=${API_KEY}&fields=files(id,name)`;
-      const data = await fetchJson(url);
-      const files = data.files || [];
-
-      const vod = files.map((f, i) => ({
-        num: i + 1,
-        name: f.name,
-        stream_type: "movie",
-        stream_id: f.id,
-        stream_icon: "",
-        added: Date.now().toString(),
-        category_id: 1,
-        container_extension: "mp4",
-        direct_source: `https://drive.google.com/uc?id=${f.id}&export=download`
-      }));
-
-      return res.json(vod);
-    } catch (err) {
-      console.error(err);
-      return res.status(500).json({ error: "Error fetching Google Drive files" });
-    }
-  }
-
-  // --- Other actions can be added later ---
-  return res.json({ error: "Action not supported" });
 };
