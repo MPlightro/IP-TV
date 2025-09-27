@@ -41,6 +41,20 @@ async function getCredentials(req) {
   return { username, password };
 }
 
+// Helper: list folders inside a parent folder
+async function listFolders(parentId, apiKey) {
+  const url = `https://www.googleapis.com/drive/v3/files?q='${parentId}'+in+parents+and mimeType='application/vnd.google-apps.folder'&key=${apiKey}&fields=files(id,name)`;
+  const data = await fetchJson(url);
+  return data.files || [];
+}
+
+// Helper: list files inside a folder
+async function listFiles(folderId, apiKey) {
+  const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents&key=${apiKey}&fields=files(id,name)`;
+  const data = await fetchJson(url);
+  return data.files || [];
+}
+
 module.exports = async (req, res) => {
   const { username, password } = await getCredentials(req);
   const USERS = parseUsers();
@@ -57,23 +71,32 @@ module.exports = async (req, res) => {
   if (!API_KEY || !FOLDER_ID) return res.status(500).json({ error: "Server not configured" });
 
   try {
-    // Fetch all files from the Drive folder
-    const url = `https://www.googleapis.com/drive/v3/files?q='${FOLDER_ID}'+in+parents&key=${API_KEY}&fields=files(id,name)`;
-    const data = await fetchJson(url);
-    const files = data.files || [];
+    // 1. List all movie folders
+    const folders = await listFolders(FOLDER_ID, API_KEY);
 
-    // Build Smarters-compatible movies array
-    const movies = files.map((f, i) => ({
-      name: f.name,
-      stream_type: "movie",
-      stream_id: f.id,
-      stream_icon: "",
-      added: Date.now().toString(),
-      category_id: 1,
-      container_extension: "mp4",
-      // Google Drive direct download link (works if file is public)
-      direct_source: `https://drive.google.com/uc?id=${f.id}&export=download`
-    }));
+    // 2. Build Smarters-compatible movies array
+    const movies = [];
+    for (let i = 0; i < folders.length; i++) {
+      const folder = folders[i];
+
+      // List files inside this folder
+      const files = await listFiles(folder.id, API_KEY);
+
+      // Find the .m3u8 file
+      const hlsFile = files.find(f => f.name.endsWith(".m3u8"));
+      if (!hlsFile) continue; // skip if no HLS playlist
+
+      movies.push({
+        name: folder.name,
+        stream_type: "movie",
+        stream_id: folder.id,
+        stream_icon: "",
+        added: Date.now().toString(),
+        category_id: 1,
+        container_extension: "m3u8",
+        direct_source: `https://drive.google.com/uc?id=${hlsFile.id}&export=download`
+      });
+    }
 
     res.json({
       user_info: { username, password, auth: 1, status: "Active", message: "Welcome" },
