@@ -1,5 +1,5 @@
 // api/player_api.js
-const playlist = require("./playlist");
+const playlist = require("./playlist.js");
 
 // Parse USERS env var into { username: password }
 function parseUsers() {
