@@ -99,7 +99,7 @@ module.exports = async (req, res) => {
       categories: [
         { category_id: 1, category_name: "Movies", parent_id: 0 }
       ],
-      movie_stream
+      movies: movie_stream
     };
 
     res.setHeader("Content-Type", "application/json");
