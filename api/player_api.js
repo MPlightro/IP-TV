@@ -1,16 +1,7 @@
-const https = require("https");
+// api/player_api.js
+const playlist = require("./playlist");
 
-// Helper to fetch M3U playlist
-function fetchPlaylist(url) {
-  return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
-      let body = "";
-      res.on("data", chunk => body += chunk.toString());
-      res.on("end", () => resolve(body));
-    }).on("error", reject);
-  });
-};
-
+// Parse USERS env var into { username: password }
 function parseUsers() {
   const raw = process.env.USERS || "";
   const map = {};
@@ -21,6 +12,7 @@ function parseUsers() {
   return map;
 }
 
+// Get credentials from query string or POST body
 async function getCredentials(req) {
   let username = req.query.username;
   let password = req.query.password;
@@ -47,37 +39,33 @@ module.exports = async (req, res) => {
     });
   }
 
-  try {
-    const playlistM3U = await fetchPlaylist(
-      `https://ip-tv-psi.vercel.app/api/playlist.js?username=${username}&password=${password}`
-    );
+  // Map playlist.js entries to Xtream Codes JSON
+  const movie_stream = playlist.map((f, i) => ({
+    num: i + 1,
+    name: f.name,
+    stream_type: f.stream_type || "movie",
+    stream_id: f.stream_id,
+    stream_icon: f.stream_icon || "",
+    added: Date.now().toString(),
+    category_id: 1,
+    container_extension: "m3u8", // treat as HLS
+    // replace .mp4 with .m3u8 so Smarters sees it as HLS
+    direct_source: f.direct_source.replace(/\.mp4$/, ".m3u8")
+  }));
 
-    // Parse M3U into movie_stream
-    const lines = playlistM3U.split("\n").filter(l => l && !l.startsWith("#EXTM3U") && !l.startsWith("#EXTINF"));
-    const movie_stream = lines.map((url, i) => ({
-      num: i + 1,
-      name: `Movie ${i+1}`,
-      stream_type: "movie",
-      stream_id: `m${i+1}`,
-      stream_icon: "",
-      added: Date.now().toString(),
-      category_id: 1,
-      container_extension: "mp4",
-      direct_source: url
-    }));
+  const response = {
+    user_info: { username, password, auth: 1, status: "Active", message: "Welcome" },
+    server_info: {
+      url: "ip-tv-psi.vercel.app",
+      port: 80,
+      https_port: 443,
+      server_protocol: "https",
+      timezone: "UTC"
+    },
+    categories: [{ category_id: 1, category_name: "Movies", parent_id: 0 }],
+    movie_stream
+  };
 
-    const response = {
-      user_info: { username, password, auth: 1, status: "Active", message: "Welcome" },
-      server_info: { url: "ip-tv-psi.vercel.app", port: 80, https_port: 443, server_protocol: "https", timezone: "UTC" },
-      categories: [{ category_id: 1, category_name: "Movies", parent_id: 0 }],
-      movie_stream
-    };
-
-    res.setHeader("Content-Type", "application/json");
-    res.json(response);
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error fetching playlist: " + String(err.message || err) });
-  }
+  res.setHeader("Content-Type", "application/json");
+  res.json(response);
 };
