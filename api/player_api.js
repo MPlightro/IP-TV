@@ -1,5 +1,5 @@
 // api/player_api.js
-const playlist = require("./playlist.js");
+const playlist = require("./playlist");
 
 // Parse USERS env var into { username: password }
 function parseUsers() {
@@ -12,27 +12,23 @@ function parseUsers() {
   return map;
 }
 
-// Get credentials from query string or POST body
-async function getCredentials(req) {
-  let username = req.query.username;
-  let password = req.query.password;
-
-  let body = "";
-  req.on("data", chunk => body += chunk.toString());
-  await new Promise(resolve => req.on("end", resolve));
-
-  const params = new URLSearchParams(body);
-  username = username || params.get("username");
-  password = password || params.get("password");
-
+// Get credentials from query string (Smarters usually uses GET)
+function getCredentials(req) {
+  const username = req.query.username;
+  const password = req.query.password;
   return { username, password };
 }
 
 module.exports = async (req, res) => {
-  const { username, password } = await getCredentials(req);
+  // Logging for debug
+  console.log("Incoming request URL:", req.url);
+  console.log("Query parameters:", req.query);
+
+  const { username, password } = getCredentials(req);
   const USERS = parseUsers();
 
   if (!username || !password || USERS[username] !== password) {
+    console.log("Failed login attempt:", { username, password });
     return res.json({
       user_info: { auth: 0, status: "Invalid", message: "Invalid username/password" },
       server_info: {}
@@ -49,7 +45,7 @@ module.exports = async (req, res) => {
     added: Date.now().toString(),
     category_id: 1,
     container_extension: "m3u8", // treat as HLS
-    // replace .mp4 with .m3u8 so Smarters sees it as HLS
+    // Trick Smarters: replace .mp4 with .m3u8
     direct_source: f.direct_source.replace(/\.mp4$/, ".m3u8")
   }));
 
